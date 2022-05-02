@@ -35,6 +35,10 @@ volumes:
     remote: storage:/$[[ project.owner ]]/$[[ flow.project_id ]]
     mount: /project
     local: .
+  mlflow_artifacts:
+    remote: storage:/$[[ project.owner ]]/$[[ flow.project_id ]]/mlflow_artifacts
+    mount: /project/mlflow_artifacts
+    local: .
 
 jobs:
   remote_debug:
@@ -83,6 +87,7 @@ jobs:
     args:
       image: $[[ images.train.ref ]]
       multi_args: $[[ multi.args ]]
+      preset: gpu-v100-large-p
       volumes_data_remote: $[[ volumes.data.remote ]]
       volumes_code_remote: $[[ volumes.code.remote ]]
       volumes_config_remote: $[[ volumes.config.remote ]]
@@ -98,3 +103,21 @@ jobs:
     action: gh:neuro-actions/filebrowser@v1.0.1
     args:
       volumes_project_remote: $[[ volumes.project.remote ]]
+
+  mlflow_server:
+    action: gh:neuro-actions/mlflow@v1.20.2
+    args:
+      backend_store_uri: sqlite:///${{ volumes.mlflow_artifacts.mount }}/mlflow.db
+      default_artifact_root: ${{ volumes.mlflow_artifacts.mount }}
+      volumes: "${{ to_json( [volumes.mlflow_artifacts.ref_rw] ) }}"
+
+  prepare_data:
+    image: ghcr.io/neuro-inc/neuro-extras
+    volumes:
+      - ${{ volumes.data.ref_rw }}
+    bash: |
+      rm -rf ${{ volumes.data.mount }}/*
+      neuro-extras data cp -x \
+        https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip \
+        ${{ volumes.data.mount }}/
+
