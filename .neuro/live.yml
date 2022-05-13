@@ -38,7 +38,6 @@ volumes:
   mlflow_artifacts:
     remote: storage:/$[[ project.owner ]]/$[[ flow.project_id ]]/mlflow_artifacts
     mount: /project/mlflow_artifacts
-    local: .
 
 jobs:
   remote_debug:
@@ -83,16 +82,49 @@ jobs:
         python $[[ volumes.code.mount ]]/train.py --data $[[ volumes.data.mount ]] $[[ multi.args ]]
 
   jupyter:
-    action: gh:neuro-actions/jupyter@v1.1.2
-    args:
-      image: $[[ images.train.ref ]]
-      multi_args: $[[ multi.args ]]
-      preset: gpu-v100-large-p
-      volumes_data_remote: $[[ volumes.data.remote ]]
-      volumes_code_remote: $[[ volumes.code.remote ]]
-      volumes_config_remote: $[[ volumes.config.remote ]]
-      volumes_notebooks_remote: $[[ volumes.notebooks.remote ]]
-      volumes_results_remote: $[[ volumes.results.remote ]]
+    image: ghcr.io/neuro-inc/base:v22.5.0-runtime
+    preset: gpu-small-p
+    http_port: 8888
+    http_auth: True
+    browse: True
+    detach: True
+    volumes:
+      - $[[ volumes.data.ref_rw ]]
+      - $[[ volumes.code.ref_rw ]]
+      - $[[ volumes.config.ref_rw ]]
+      - $[[ volumes.notebooks.ref_rw ]]
+      - $[[ volumes.mlflow_artifacts.ref_rw ]]
+    env:
+      PYTHONPATH: /project/modules
+      MLFLOW_TRACKING_URI: http://${{ inspect_job('mlflow_server').internal_hostname_named }}:5000
+    cmd: >-
+      jupyter notebook
+        --no-browser
+        --ip=0.0.0.0
+        --port=8888
+        --allow-root
+        --NotebookApp.token=
+        --notebook-dir=$[[ volumes.notebooks.mount ]]
+        --NotebookApp.shutdown_no_activity_timeout=900
+        --MappingKernelManager.cull_idle_timeout=7200
+        --MappingKernelManager.cull_connected=True
+
+  serve_bentoml:
+    image: ${{ images.train.ref }}
+    volumes:
+      - ${{ volumes.mlflow_artifacts.ref_ro }}
+      - $[[ volumes.code.ref_ro ]]
+    env:
+      MLFLOW_TRACKING_URI: http://${{ inspect_job('mlflow_server').internal_hostname_named }}:5000
+      RUN_ID: ${{ params.run_id }}
+    http_port: 3000
+    http_auth: False
+    params:
+      run_id:
+    bash: |
+      pip install bentoml --pre
+      bentoml serve ${{ volumes.code.mount }}/bento_server.py:svc --host 0.0.0.0 --port 3000
+    # curl -H "Content-Type: multipart/form-data" -F 'fileobj=@Dog.jpg;type=image/jpeg' https://<job-http-url>/classify -L
 
   tensorboard:
     action: gh:neuro-actions/tensorboard@v1.0.0
