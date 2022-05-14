@@ -137,7 +137,7 @@ jobs:
       volumes_project_remote: $[[ volumes.project.remote ]]
 
   mlflow_server:
-    action: gh:neuro-actions/mlflow@v1.20.2
+    action: gh:neuro-actions/mlflow@v1.25.2
     args:
       backend_store_uri: sqlite:///${{ volumes.mlflow_artifacts.mount }}/mlflow.db
       default_artifact_root: ${{ volumes.mlflow_artifacts.mount }}
